@@ -1,0 +1,67 @@
+## 🏗️ Jenkins Scalability: Controller-Agent (Master-Slave) Setup
+*Topic:* Distributed Build Architecture | *Environment:* Windows-to-Windows
+
+Moving from a single Jenkins server to a *Controller-Agent* (formerly Master-Slave) architecture is the leap from a "lab environment" to a "production-grade CI/CD infrastructure." By offloading builds to agents, you ensure your main dashboard remains responsive while your heavy compilation tasks run on dedicated hardware.
+
+---
+
+### 🖥️ Part 1: The Controller (The Brain)
+1.  *Installation:* Install Java 21 $\rightarrow$ Run Jenkins MSI $\rightarrow$ Select C:\ drive install.
+2.  *Configuration:* Navigate to localhost:8080.
+    * Use cat (or Notepad) on the password file to unlock.
+    * Install "Suggested Plugins" to ensure compatibility with Agent nodes.
+    * *Pro Tip:* If you have port conflicts, set your Jenkins service to use port 8082 during the installer's "Custom Setup" phase.
+
+---
+
+### ⚙️ Part 2: The Agent (The Muscle)
+1.  *Provision Node:* Go to *Manage Jenkins* → *Nodes* → *New Node*.
+    * Name it descriptively (e.g., Windows-Build-Server-01).
+    * *Remote Root Directory:* Create C:\Dev\Jenkins-Agent and map it exactly.
+2.  *The Launch Strategy:*
+    * Select *"Launch agent by connecting to controller."*
+3.  *Connecting:*
+    * Navigate to your new Node page.
+    * Copy the java -jar agent.jar ... command.
+    * *The "Pro" Fix:* Open cmd as *Administrator*, navigate to your C:\Dev\Jenkins-Agent folder, and run the command. 
+    * Wait for the "Connected" status in the Jenkins UI.
+
+---
+
+### 🛠️ Part 3: Orchestrating the Work
+Don't let Jenkins decide where jobs run. You decide.
+
+* *Freestyle:* Use *"Restrict where this project can be run"* and type your label (e.g., Windows-Build-Server-01).
+* *Pipeline:* groovy
+    pipeline {
+        agent { label 'Windows-Build-Server-01' }
+        stages {
+            stage('Build') {
+                steps {
+                    bat 'mvn clean package' // Use 'bat' for Windows agents
+                }
+            }
+        }
+    }
+    
+
+---
+
+### 💡 Gemini’s SRE Pro-Tips
+
+* *1. Labels are Everything:* Do not target agents by name (e.g., Shubh-Performance-Team). Target them by *label* (e.g., windows-os or heavy-build). This allows you to add 5 more Windows agents later without changing your job configurations—Jenkins will just pick any available agent with that label.
+* *2. The "Service" Wrapper:* Running the connection command manually in a CMD window is great for testing, but it will die if you close the terminal or restart the PC.
+    * *The Fix:* Once stable, install the agent as a *Windows Service* using [NSSM (Non-Sucking Service Manager)](https://nssm.cc/). It will start automatically in the background even if no one is logged into the Windows machine.
+* *3. Firewall Awareness:* If the Agent connects but the build fails to "Sync," check Windows Firewall. Ensure the Agent port (usually randomized or 50000) is open on the Controller's side.
+* *4. Build Environment Isolation:* If you use agents for different projects (e.g., one agent for Java 8, one for Java 21), use *Labels* to prevent incompatible builds from running on the wrong agent. 
+* *5. Clean Workspace Policy:* Windows builds are notorious for "locking files." Always use the *"Discard Old Builds"* policy and ensure cleanWs() is called in your pipeline to prevent Access Denied errors caused by left-over build artifacts.
+
+---
+
+### 📋 Troubleshooting Checklist
+| Issue | Likely Root Cause | Fix |
+| :--- | :--- | :--- |
+| *Node is Offline* | Network drop or service stopped. | Re-run the connection command in cmd. |
+| *"Access Denied"* | Folder permission issues. | Right-click cmd $\rightarrow$ *Run as Administrator*. |
+| *Build stuck in Queue* | No agent matches the label. | Check *Manage Jenkins* $\rightarrow$ *Nodes* to ensure the label matches exactly. |
+| *Java Version Mismatch* | Controller and Agent use different JDKs. | Ensure both machines have the exact same minor version of Java installed. |
